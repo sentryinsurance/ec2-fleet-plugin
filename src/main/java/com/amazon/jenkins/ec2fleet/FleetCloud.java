@@ -5,22 +5,13 @@ import com.amazon.jenkins.ec2fleet.aws.RegionHelper;
 import com.amazon.jenkins.ec2fleet.fleet.Fleet;
 import com.amazon.jenkins.ec2fleet.fleet.Fleets;
 import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.model.Instance;
-import com.amazonaws.services.ec2.model.InstanceStateName;
+import com.amazonaws.services.ec2.model.*;
 import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsHelper;
 import com.google.common.collect.Sets;
 import hudson.Extension;
-import hudson.model.Computer;
-import hudson.model.Descriptor;
-import hudson.model.Failure;
-import hudson.model.Label;
-import hudson.model.Node;
-import hudson.model.Queue;
-import hudson.model.TaskListener;
-import hudson.slaves.Cloud;
-import hudson.slaves.ComputerConnector;
-import hudson.slaves.NodeProperty;
-import hudson.slaves.NodeProvisioner;
+import hudson.ExtensionPoint;
+import hudson.model.*;
+import hudson.slaves.*;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import hudson.util.ListBoxModel.Option;
@@ -29,6 +20,7 @@ import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -124,7 +116,7 @@ public class FleetCloud extends AbstractFleetCloud {
     private final int numExecutors;
     private final boolean addNodeOnlyIfRunning;
     private final boolean restrictUsage;
-    private final boolean scaleExecutorsByWeight;
+    private final ExecutorScaler executorScaler;
     private final Integer initOnlineTimeoutSec;
     private final Integer initOnlineCheckIntervalSec;
     private final Integer cloudStatusIntervalSec;
@@ -186,9 +178,9 @@ public class FleetCloud extends AbstractFleetCloud {
                       final boolean disableTaskResubmit,
                       final Integer initOnlineTimeoutSec,
                       final Integer initOnlineCheckIntervalSec,
-                      final boolean scaleExecutorsByWeight,
                       final Integer cloudStatusIntervalSec,
-                      final boolean noDelayProvision) {
+                      final boolean noDelayProvision,
+                      final ExecutorScaler executorScaler) {
         super(StringUtils.isNotBlank(name) ? name : CloudNames.generateUnique(BASE_DEFAULT_FLEET_CLOUD_ID));
         init();
         this.credentialsId = credentialsId;
@@ -212,13 +204,13 @@ public class FleetCloud extends AbstractFleetCloud {
         this.numExecutors = Math.max(numExecutors, 1);
         this.addNodeOnlyIfRunning = addNodeOnlyIfRunning;
         this.restrictUsage = restrictUsage;
-        this.scaleExecutorsByWeight = scaleExecutorsByWeight;
         this.disableTaskResubmit = disableTaskResubmit;
         this.initOnlineTimeoutSec = initOnlineTimeoutSec;
         this.initOnlineCheckIntervalSec = initOnlineCheckIntervalSec;
         this.cloudStatusIntervalSec = cloudStatusIntervalSec;
         this.noDelayProvision = noDelayProvision;
-
+        this.executorScaler = executorScaler == null ? new NoScaler().withNumExecutors(this.numExecutors) :
+                                                       executorScaler.withNumExecutors(this.numExecutors);
         if (fleet != null) {
             this.stats = Fleets.get(fleet).getState(
                     getAwsCredentialsId(), region, endpoint, getFleet());
@@ -322,8 +314,8 @@ public class FleetCloud extends AbstractFleetCloud {
         return numExecutors;
     }
 
-    public boolean isScaleExecutorsByWeight() {
-        return scaleExecutorsByWeight;
+    public ExecutorScaler getExecutorScaler() {
+        return this.executorScaler;
     }
 
     public String getJvmSettings() {
@@ -833,13 +825,7 @@ public class FleetCloud extends AbstractFleetCloud {
             effectiveFsRoot = fsRoot;
         }
 
-        final Double instanceTypeWeight = stats.getInstanceTypeWeights().get(instance.getInstanceType());
-        final int effectiveNumExecutors;
-        if (scaleExecutorsByWeight && instanceTypeWeight != null) {
-            effectiveNumExecutors = (int) Math.max(Math.round(numExecutors * instanceTypeWeight), 1);
-        } else {
-            effectiveNumExecutors = numExecutors;
-        }
+        int effectiveNumExecutors = this.executorScaler.scale(instance.getInstanceType(), stats, ec2);
 
         final FleetAutoResubmitComputerLauncher computerLauncher = new FleetAutoResubmitComputerLauncher(
                 computerConnector.launch(address, TaskListener.NULL));
@@ -945,6 +931,10 @@ public class FleetCloud extends AbstractFleetCloud {
             return Jenkins.get().getDescriptorList(ComputerConnector.class);
         }
 
+        public List getExecutorScalerDescriptors() {
+            return Jenkins.get().getDescriptorList(ExecutorScaler.class);
+        }
+
         public ListBoxModel doFillAwsCredentialsIdItems() {
             return AWSCredentialsHelper.doFillCredentialsIdItems(Jenkins.get());
         }
@@ -1042,6 +1032,125 @@ public class FleetCloud extends AbstractFleetCloud {
             req.bindJSON(this, formData);
             save();
             return super.configure(req, formData);
+        }
+    }
+
+    public static abstract class ExecutorScaler extends AbstractDescribableImpl<ExecutorScaler> implements ExtensionPoint {
+
+        protected int numExecutors = 1;
+
+        protected ExecutorScaler(){}
+
+        public abstract int scale(String instanceType, FleetStateStats stats, AmazonEC2 ec2);
+
+        public ExecutorScaler withNumExecutors(int numExecutors) {
+            setNumExecutors(numExecutors);
+            return this;
+        }
+
+        private void setNumExecutors(int numExecutors) {
+            this.numExecutors = numExecutors;
+        }
+
+        public ExecutorScaleDescriptor getDescriptor() { return (ExecutorScaleDescriptor) super.getDescriptor();}
+    }
+
+    public static class ExecutorScaleDescriptor extends Descriptor<ExecutorScaler> {}
+
+    public static class NoScaler extends ExecutorScaler {
+
+        @DataBoundConstructor
+        public NoScaler() {}
+
+        @Override
+        public int scale(String instanceType, FleetStateStats stats, AmazonEC2 ec2) { return numExecutors; }
+
+        @Extension
+        public static class DescriptorImpl extends ExecutorScaleDescriptor {
+            @Override
+            public String getDisplayName() { return "No scaling"; }
+        }
+    }
+
+    public static class WeightedScaler extends ExecutorScaler {
+
+        @DataBoundConstructor
+        public WeightedScaler() {}
+        @Override
+        public int scale(String instanceType, FleetStateStats stats, AmazonEC2 ec2) {
+            if(stats == null) {
+                return numExecutors;
+            }
+
+            final Double instanceTypeWeight = stats.getInstanceTypeWeights().get(instanceType);
+            if (instanceTypeWeight == null) {
+                return numExecutors;
+            }
+            return (int) Math.max(Math.round(numExecutors * instanceTypeWeight), 1);
+        }
+
+        @Extension
+        public static class DescriptorImpl extends ExecutorScaleDescriptor {
+            @Override
+            public String getDisplayName() { return "Scale by weight";}
+        }
+    }
+
+    public static class NodeHardwareScaler extends ExecutorScaler {
+        private int vCpuPerExecutor;
+        private int memoryGiBPerExecutor;
+
+        @DataBoundConstructor
+        public NodeHardwareScaler(int vCpuPerExecutor, int memoryGiBPerExecutor) {
+            this.vCpuPerExecutor = vCpuPerExecutor;
+            this.memoryGiBPerExecutor = memoryGiBPerExecutor;
+        }
+
+        @DataBoundSetter
+        public void setvCpuPerExecutor(int value) { this.vCpuPerExecutor = value; }
+
+        @DataBoundSetter
+        public void setMemoryGiBPerExecutor(int value) { this.memoryGiBPerExecutor = value; }
+
+        public int getvCpuPerExecutor() {
+            return vCpuPerExecutor;
+        }
+
+        public int getMemoryGiBPerExecutor() {
+            return memoryGiBPerExecutor;
+        }
+
+        @Override
+        public int scale(final String instanceType, final FleetStateStats stats, final AmazonEC2 ec2) {
+            if(this.vCpuPerExecutor == 0 && this.memoryGiBPerExecutor == 0) {
+                return numExecutors;
+            }
+
+            int vCPUNumExecutors = Integer.MAX_VALUE;
+            int memoryNumExecutors = Integer.MAX_VALUE;
+            InstanceTypeInfo instanceTypeInfo = getInstanceTypeInfo(ec2, instanceType);
+            if(this.vCpuPerExecutor != 0) {
+                int instanceVCPUs = instanceTypeInfo.getVCpuInfo().getDefaultVCpus();
+                vCPUNumExecutors = Math.max(instanceVCPUs/this.vCpuPerExecutor, 1);
+            }
+
+            if(this.memoryGiBPerExecutor != 0) {
+                long instanceMemory = instanceTypeInfo.getMemoryInfo().getSizeInMiB()/1024;
+                memoryNumExecutors = Math.max(Math.round((float) instanceMemory /this.memoryGiBPerExecutor), 1);
+            }
+            return Math.min(vCPUNumExecutors, memoryNumExecutors);
+        }
+
+        @Extension
+        public static class DescriptorImpl extends ExecutorScaleDescriptor {
+            @Override
+            public String getDisplayName() { return "Scale by node hardware";}
+        }
+
+        private InstanceTypeInfo getInstanceTypeInfo(final AmazonEC2 ec2, final String instanceType) {
+            DescribeInstanceTypesRequest request = new DescribeInstanceTypesRequest().withInstanceTypes(instanceType);
+            DescribeInstanceTypesResult result = ec2.describeInstanceTypes(request);
+            return result.getInstanceTypes().get(0);
         }
     }
 }

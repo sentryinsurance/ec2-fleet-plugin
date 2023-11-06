@@ -64,7 +64,7 @@ public class FleetCloudConfigurationAsCodeTest {
         assertEquals(cloud.getNumExecutors(), 1);
         assertEquals(cloud.isAddNodeOnlyIfRunning(), false);
         assertEquals(cloud.isRestrictUsage(), false);
-        assertEquals(cloud.isScaleExecutorsByWeight(), false);
+        assertEquals(cloud.getExecutorScaler().getClass(), FleetCloud.NoScaler.class);
         assertEquals(cloud.getInitOnlineTimeoutSec(), 180);
         assertEquals(cloud.getInitOnlineCheckIntervalSec(), 15);
         assertEquals(cloud.getCloudStatusIntervalSec(), 10);
@@ -92,7 +92,7 @@ public class FleetCloudConfigurationAsCodeTest {
         assertEquals(cloud.getNumExecutors(), 12);
         assertEquals(cloud.isAddNodeOnlyIfRunning(), true);
         assertEquals(cloud.isRestrictUsage(), true);
-        assertEquals(cloud.isScaleExecutorsByWeight(), true);
+        assertEquals(cloud.getExecutorScaler().getClass(), FleetCloud.WeightedScaler.class);
         assertEquals(cloud.getInitOnlineTimeoutSec(), 181);
         assertEquals(cloud.getInitOnlineCheckIntervalSec(), 13);
         assertEquals(cloud.getCloudStatusIntervalSec(), 11);

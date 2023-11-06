@@ -37,6 +37,8 @@ import static org.mockito.Mockito.when;
 
 public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
 
+    private final FleetCloud.ExecutorScaler noScaling = new FleetCloud.NoScaler();
+
     private AmazonEC2 amazonEC2;
 
     @Before
@@ -72,7 +74,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
     public void shouldTerminateNodeMarkedForDeletion() throws Exception {
         final FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, false, 999, false);
+                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, 999, false, noScaling);
         // Set initial jenkins nodes
         cloud.update();
         j.jenkins.clouds.add(cloud);
@@ -96,7 +98,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
     public void shouldTerminateExcessCapacity() throws Exception {
         final FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, false, 999, false);
+                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, 999, false, noScaling);
         // Set initial jenkins nodes
         cloud.update();
         j.jenkins.clouds.add(cloud);
@@ -135,14 +137,14 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
 
         FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 2, 2, 0, 1, false, true, "-1", false, 0, 0, false, 999, false);
+                1, 2, 2, 0, 1, false, true, "-1", false, 0, 0, 999, false, noScaling);
         j.jenkins.clouds.add(cloud);
         cloud.update();
 
         assertAtLeastOneNode();
         cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, false, 99, false);
+                1, 0, 0, 0, 1, false, true, "-1", false, 0, 0, 99, false, noScaling);
         j.jenkins.clouds.clear();
         j.jenkins.clouds.add(cloud);
         assertAtLeastOneNode();
@@ -167,7 +169,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
     public void shouldTerminateIdleNodesAfterIdleTimeout() throws Exception {
         final FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 0, 2, 0, 1, false, true, "-1", false, 0, 0, false, 99, false);
+                1, 0, 2, 0, 1, false, true, "-1", false, 0, 0, 99, false, noScaling);
         j.jenkins.clouds.add(cloud);
         cloud.update();
 
@@ -198,7 +200,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
     public void shouldNotTerminateBelowMinSize() throws Exception {
         final FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 2, 5, 0, 1, false, true, "-1", false, 0, 0, false, 30, false);
+                1, 2, 5, 0, 1, false, true, "-1", false, 0, 0, 30, false, noScaling);
         j.jenkins.clouds.add(cloud);
         cloud.update();
 
@@ -222,7 +224,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
     public void shouldNotTerminateBelowMinSpareSize() throws Exception {
         final FleetCloud cloud = new FleetCloud("TestCloud", "credId", null, "region",
                 null, "fId", "momo", null, new LocalComputerConnector(j), false, false,
-                1, 0, 5, 2, 1, false, true, "-1", false, 0, 0, false, 30, false);
+                1, 0, 5, 2, 1, false, true, "-1", false, 0, 0, 30, false, noScaling);
         j.jenkins.clouds.add(cloud);
         cloud.update();
 
@@ -252,7 +254,7 @@ public class EC2RetentionStrategyIntegrationTest extends IntegrationTest {
         FleetCloud cloud = spy(new FleetCloud("testCloud", "credId", null, "region",
                 null, "fId", label, null, new LocalComputerConnector(j), false, false,
                 0, 0, 10, 0, 1, false, true,
-                String.valueOf(maxTotalUses), true, 0, 0, false, 10, false));
+                String.valueOf(maxTotalUses), true, 0, 0, 10, false, noScaling));
         j.jenkins.clouds.add(cloud);
         cloud.update();
         assertAtLeastOneNode();

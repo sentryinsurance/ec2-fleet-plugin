@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Ignore
 public class NoDelayProvisionStrategyPerformanceTest extends IntegrationTest {
+    private final FleetCloud.ExecutorScaler noScaling = new FleetCloud.NoScaler();
 
     @BeforeClass
     public static void beforeClass() {
@@ -55,8 +56,8 @@ public class NoDelayProvisionStrategyPerformanceTest extends IntegrationTest {
         final FleetCloudWithHistory cloud = new FleetCloudWithHistory(null, "credId", null, "region",
                 null, "fId", label, null, computerConnector, false, false,
                 1, 0, maxWorkers, 0, 1, true, false,
-                false, 0, 0, false,
-                15, noDelay);
+                false, 0, 0,
+                15, noDelay, noScaling);
         j.jenkins.clouds.add(cloud);
 
         System.out.println("waiting cloud start");
