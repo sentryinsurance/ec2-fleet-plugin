@@ -1,6 +1,7 @@
 package com.amazon.jenkins.ec2fleet;
 
 import com.amazonaws.services.ec2.model.InstanceStateName;
+import hudson.model.FreeStyleBuild;
 import hudson.model.queue.QueueTaskFuture;
 import hudson.slaves.ComputerConnector;
 import hudson.slaves.NodeProvisioner;
@@ -25,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Ignore
 public class NoDelayProvisionStrategyPerformanceTest extends IntegrationTest {
-    private final FleetCloud.ExecutorScaler noScaling = new FleetCloud.NoScaler();
+    private final EC2FleetCloud.ExecutorScaler noScaling = new EC2FleetCloud.NoScaler();
 
     @BeforeClass
     public static void beforeClass() {
@@ -49,11 +50,11 @@ public class NoDelayProvisionStrategyPerformanceTest extends IntegrationTest {
         final int scheduleInterval = 15;
         final int batchSize = 9;
 
-        mockFleetApiToSpotFleetWithDelay(InstanceStateName.Running, 500);
+        mockEc2FleetApiToEc2SpotFleetWithDelay(InstanceStateName.Running, 500);
 
         final ComputerConnector computerConnector = new LocalComputerConnector(j);
         final String label = "momo";
-        final FleetCloudWithHistory cloud = new FleetCloudWithHistory(null, "credId", null, "region",
+        final EC2FleetCloudWithHistory cloud = new EC2FleetCloudWithHistory(null, "credId", null, "region",
                 null, "fId", label, null, computerConnector, false, false,
                 1, 0, maxWorkers, 0, 1, true, false,
                 false, 0, 0,
