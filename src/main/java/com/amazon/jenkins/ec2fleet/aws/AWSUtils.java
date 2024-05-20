@@ -1,5 +1,6 @@
 package com.amazon.jenkins.ec2fleet.aws;
 
+import com.amazon.jenkins.ec2fleet.EC2FleetCloud;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.retry.PredefinedRetryPolicies;
 import com.google.common.base.Joiner;
@@ -10,6 +11,8 @@ import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.Proxy;
 import java.net.URL;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class AWSUtils {
 
@@ -41,7 +44,8 @@ public final class AWSUtils {
                 proxy = proxyConfig.createProxy(endpoint);
             }
 
-            if (!proxy.equals(Proxy.NO_PROXY) && proxy.address() instanceof InetSocketAddress) {
+
+            if (proxy.address() instanceof InetSocketAddress) {
                 InetSocketAddress address = (InetSocketAddress) proxy.address();
                 clientConfiguration.setProxyHost(address.getHostName());
                 clientConfiguration.setProxyPort(address.getPort());
@@ -51,7 +55,7 @@ public final class AWSUtils {
                 }
                 if (null != proxyConfig.getNoProxyHost()) {
                     String[] noProxyParts = proxyConfig.getNoProxyHost().split("[ \t\n,|]+");
-                    clientConfiguration.setNonProxyHosts(Joiner.on(',').join(noProxyParts));
+                    clientConfiguration.setNonProxyHosts(Joiner.on('|').join(noProxyParts));
                 }
             }
         }
