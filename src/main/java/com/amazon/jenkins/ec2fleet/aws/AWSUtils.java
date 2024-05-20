@@ -2,6 +2,7 @@ package com.amazon.jenkins.ec2fleet.aws;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.retry.PredefinedRetryPolicies;
+import com.google.common.base.Joiner;
 import hudson.ProxyConfiguration;
 import jenkins.model.Jenkins;
 
@@ -47,6 +48,10 @@ public final class AWSUtils {
                 if (null != proxyConfig.getUserName()) {
                     clientConfiguration.setProxyUsername(proxyConfig.getUserName());
                     clientConfiguration.setProxyPassword(proxyConfig.getSecretPassword().getPlainText());
+                }
+                if (null != proxyConfig.getNoProxyHost()) {
+                    String[] noProxyParts = proxyConfig.getNoProxyHost().split("[ \t\n,|]+");
+                    clientConfiguration.setNonProxyHosts(Joiner.on(',').join(noProxyParts));
                 }
             }
         }
