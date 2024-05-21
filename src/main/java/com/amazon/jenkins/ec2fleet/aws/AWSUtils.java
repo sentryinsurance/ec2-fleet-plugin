@@ -45,7 +45,7 @@ public final class AWSUtils {
             }
 
 
-            if (proxy.address() instanceof InetSocketAddress) {
+            if (!proxy.equals(Proxy.NO_PROXY) && proxy.address() instanceof InetSocketAddress) {
                 InetSocketAddress address = (InetSocketAddress) proxy.address();
                 clientConfiguration.setProxyHost(address.getHostName());
                 clientConfiguration.setProxyPort(address.getPort());
